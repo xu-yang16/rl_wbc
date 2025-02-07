@@ -1,0 +1,186 @@
+<mujoco model="mini_cheetah">
+    <compiler angle="radian" meshdir="../meshes/" />
+    <size njmax="500" nconmax="100" />
+    <option gravity='0 0 -9.81' iterations='50' solver='Newton' timestep='0.002'/>s
+
+    <default>
+        <geom contype="1" conaffinity="1" friction="0.6 0.3 0.3" rgba="0.5 0.6 0.7 1" margin="0.001" group="0"/>
+
+        <light castshadow="false" diffuse="1 1 1"/>
+        <motor ctrlrange="-33.5 33.5" ctrllimited="true"/>
+        <camera fovy="60"/>
+        <joint damping="0.01" armature="0.01" frictionloss="0.2" />
+
+    </default>
+
+    <asset>
+        <mesh name="mini_body" file="mini_body.stl" />
+        <mesh name="mini_abad" file="mini_abad.stl" />
+        <mesh name="mini_upper_link" file="mini_upper_link.stl" />
+        <mesh name="mini_lower_link" file="mini_lower_link.stl" />
+    </asset>
+
+    <asset>
+        <texture name="plane" type="2d" builtin="flat" rgb1="1 1 1" rgb2="1 1 1" width="512" height="512" mark="cross" markrgb="0 0 0"/>
+        <material name="plane" reflectance="0.0" texture="plane" texrepeat="3 3" texuniform="true"/>
+        <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
+        <material name="grid" texture="grid" texrepeat="2 2" texuniform="false" reflectance=".2"/>
+    </asset>
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+        <rgba com="0.502 1.0 0 0.5" contactforce="0.98 0.4 0.4 0.7" contactpoint="1.0 1.0 0.6 0.4"/>
+        <scale com="0.2" forcewidth="0.035" contactwidth="0.10" contactheight="0.04"/>
+    </visual>
+
+    <worldbody>
+        <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+        <camera name="track" mode="trackcom" pos="0 -1.3 1.6" xyaxes="1 0 0 0 0.707 0.707"/>
+        <geom name="floor" type="plane" size="0 0 1" material="grid"/>
+
+        <body name="trunk" pos="0 0 0.32">
+            <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="3.3" diaginertia="0.042673 0.036203 0.011253" />
+            <joint type="free" />
+            <geom type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_body" />
+            <geom type="mesh" mesh="mini_body" />
+            <!-- <geom size="0.0005 0.0005 0.0005" type="box" contype="0" conaffinity="0" group="1" rgba="0.8 0 0 0" />
+            <geom size="0.0005 0.0005 0.0005" type="box" rgba="0.8 0 0 0" /> -->
+            <site name="imu" pos="0 0 0"/>
+
+            <body name="1_FR_hip" pos="0.19 -0.049 0">
+                <inertial pos="0 0.036 0" quat="0.564242 0.568689 0.421431 0.424993" mass="0.54" diaginertia="0.000577158 0.000443992 0.00036385" />
+                <joint name="1_FR_hip_joint" pos="0 0 0" axis="1 0 0" />
+                <geom pos="-0.055 0 0" quat="2.31078e-07 0.707105 0.707108 2.31079e-07" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_abad" />
+                <geom pos="-0.055 0 0" quat="2.31078e-07 0.707105 0.707108 2.31079e-07" type="mesh" mesh="mini_abad" />
+                <body name="1_FR_thigh" pos="0 -0.062 0">
+                    <inertial pos="0 0.016 -0.02" quat="0.899267 -0.00195739 -0.00366412 0.437381" mass="0.634" diaginertia="0.001498 0.001498 0.001498" />
+                    <joint name="1_FR_thigh_joint" pos="0 0 0" axis="0 1 0" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_upper_link" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" mesh="mini_upper_link" />
+                    <body name="1_FR_calf" pos="0 0 -0.209">
+                        <inertial pos="0 0 -0.188673" quat="0.707107 0 0 0.707107" mass="0.214" diaginertia="0.000310727 0.000307727 3.1e-05" />
+                        <joint name="1_FR_calf_joint" pos="0 0 0" axis="0 1 0" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_lower_link" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" mesh="mini_lower_link" />
+
+                        <geom name="FR_foot" size="0.015" pos="0 0 -0.18" friction="0.7 0.02 0.01"/>
+                        <body name="1_FR_foot" pos="0 0 -0.18"/>
+                        <site name="FR_foot_site" pos="0 0 -0.18" type="sphere" size="0.015"/>
+                    </body>
+                </body>
+            </body>
+            <body name="2_FL_hip" pos="0.19 0.049 0">
+                <inertial pos="0 0.036 0" quat="0.564242 0.568689 0.421431 0.424993" mass="0.54" diaginertia="0.000577158 0.000443992 0.00036385" />
+                <joint name="2_FL_hip_joint" pos="0 0 0" axis="1 0 0" />
+                <geom pos="-0.055 0 0" quat="0.707105 0 0 -0.707108" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_abad" />
+                <geom pos="-0.055 0 0" quat="0.707105 0 0 -0.707108" type="mesh" mesh="mini_abad" />
+                <body name="2_FL_thigh" pos="0 0.062 0">
+                    <inertial pos="0 0.016 -0.02" quat="0.899267 -0.00195739 -0.00366412 0.437381" mass="0.634" diaginertia="0.001498 0.001498 0.001498" />
+                    <joint name="2_FL_thigh_joint" pos="0 0 0" axis="0 1 0" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_upper_link" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" mesh="mini_upper_link" />
+                    <body name="2_FL_calf" pos="0 0 -0.209">
+                        <inertial pos="0 0 -0.188673" quat="0.707107 0 0 0.707107" mass="0.214" diaginertia="0.000310727 0.000307727 3.1e-05" />
+                        <joint name="2_FL_calf_joint" pos="0 0 0" axis="0 1 0" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_lower_link" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" mesh="mini_lower_link" />
+                        
+                        <geom name="FL_foot" size="0.015" pos="0 0 -0.18" friction="0.7 0.02 0.01"/>
+                        <body name="2_FL_foot" pos="0 0 -0.18"/>
+                        <site name="FL_foot_site" pos="0 0 -0.18" type="sphere" size="0.015"/>
+                    </body>
+                </body>
+            </body>
+            <body name="3_RR_hip" pos="-0.19 -0.049 0">
+                <inertial pos="0 0.036 0" quat="0.564242 0.568689 0.421431 0.424993" mass="0.54" diaginertia="0.000577158 0.000443992 0.00036385" />
+                <joint name="3_RR_hip_joint" pos="0 0 0" axis="1 0 0" />
+                <geom pos="0.055 0 0" quat="0.707105 0 0 0.707108" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_abad" />
+                <geom pos="0.055 0 0" quat="0.707105 0 0 0.707108" type="mesh" mesh="mini_abad" />
+                <body name="3_RR_thigh" pos="0 -0.062 0">
+                    <inertial pos="0 0.016 -0.02" quat="0.899267 -0.00195739 -0.00366412 0.437381" mass="0.634" diaginertia="0.001498 0.001498 0.001498" />
+                    <joint name="3_RR_thigh_joint" pos="0 0 0" axis="0 1 0" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_upper_link" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" mesh="mini_upper_link" />
+                    <body name="3_RR_calf" pos="0 0 -0.209">
+                        <inertial pos="0 0 -0.188673" quat="0.707107 0 0 0.707107" mass="0.214" diaginertia="0.000310727 0.000307727 3.1e-05" />
+                        <joint name="3_RR_calf_joint" pos="0 0 0" axis="0 1 0" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_lower_link" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" mesh="mini_lower_link" />
+                        
+                        <geom name="RR_foot" size="0.015" pos="0 0 -0.18" friction="0.7 0.02 0.01"/>
+                        <body name="3_RR_foot" pos="0 0 -0.18"/>
+                        <site name="RR_foot_site" pos="0 0 -0.18" type="sphere" size="0.015"/>
+                    </body>
+                </body>
+            </body>
+            <body name="4_RL_hip" pos="-0.19 0.049 0">
+                <inertial pos="0 0.036 0" quat="0.564242 0.568689 0.421431 0.424993" mass="0.54" diaginertia="0.000577158 0.000443992 0.00036385" />
+                <joint name="4_RL_hip_joint" pos="0 0 0" axis="1 0 0" />
+                <geom pos="0.055 0 0" quat="2.31078e-07 0.707105 -0.707108 -2.31079e-07" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_abad" />
+                <geom pos="0.055 0 0" quat="2.31078e-07 0.707105 -0.707108 -2.31079e-07" type="mesh" mesh="mini_abad" />
+                <body name="4_RL_thigh" pos="0 0.062 0">
+                    <inertial pos="0 0.016 -0.02" quat="0.899267 -0.00195739 -0.00366412 0.437381" mass="0.634" diaginertia="0.001498 0.001498 0.001498" />
+                    <joint name="4_RL_thigh_joint" pos="0 0 0" axis="0 1 0" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_upper_link" />
+                    <geom quat="0.707105 0 -0.707108 0" type="mesh" mesh="mini_upper_link" />
+                    <body name="4_RL_calf" pos="0 0 -0.209">
+                        <inertial pos="0 0 -0.188673" quat="0.707107 0 0 0.707107" mass="0.214" diaginertia="0.000310727 0.000307727 3.1e-05" />
+                        <joint name="4_RL_calf_joint" pos="0 0 0" axis="0 1 0" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="mini_lower_link" />
+                        <geom quat="3.26795e-07 0 1 0" type="mesh" mesh="mini_lower_link" />
+                        
+                        <geom name="RL_foot" size="0.015" pos="0 0 -0.18" friction="0.7 0.02 0.01"/>
+                        <body name="4_RL_foot" pos="0 0 -0.18"/>
+                        <site name="RL_foot_site" pos="0 0 -0.18" type="sphere" size="0.015"/>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+
+    <actuator>       
+        <motor name="FR_hip"   gear="1" joint="1_FR_hip_joint"/>
+        <motor name="FR_thigh"  gear="1" joint="1_FR_thigh_joint"/>
+        <motor name="FR_calf"   gear="1" joint="1_FR_calf_joint"/>
+
+        <motor name="FL_hip"   gear="1" joint="2_FL_hip_joint"/>
+        <motor name="FL_thigh"  gear="1" joint="2_FL_thigh_joint"/>
+        <motor name="FL_calf"   gear="1" joint="2_FL_calf_joint"/>
+
+        <motor name="RR_hip"   gear="1" joint="3_RR_hip_joint"/>
+        <motor name="RR_thigh"  gear="1" joint="3_RR_thigh_joint"/>
+        <motor name="RR_calf"   gear="1" joint="3_RR_calf_joint"/>
+
+        <motor name="RL_hip"   gear="1" joint="4_RL_hip_joint"/>
+        <motor name="RL_thigh"  gear="1" joint="4_RL_thigh_joint"/>
+        <motor name="RL_calf"   gear="1" joint="4_RL_calf_joint" />
+    </actuator>
+
+    <sensor>
+        <accelerometer name="BodyAcc" site="imu"/>
+        <gyro name="BodyGyro" site="imu"/>
+        <frameangacc name="BodyAngAcc" objtype="site" objname="imu"/>
+
+        <framepos name="BodyPos" objtype="site" objname="imu"/>
+        <framequat name="BodyQuat" objtype="site" objname="imu"/>
+
+        <framelinvel name="BodyVel" objtype="site" objname="imu" />
+
+        <touch name="FR_foot_force_sensor" site="FR_foot_site"/>
+        <touch name="FL_foot_force_sensor" site="FL_foot_site"/>
+        <touch name="RR_foot_force_sensor" site="RR_foot_site"/>
+        <touch name="RL_foot_force_sensor" site="RL_foot_site"/>
+    </sensor>
+
+    <contact>
+        <exclude name="exclude_body_to_abad_fr" body1="trunk" body2="1_FR_thigh"/>
+        <exclude name="exclude_body_to_abad_fl" body1="trunk" body2="2_FL_thigh"/>
+        <exclude name="exclude_body_to_abad_hr" body1="trunk" body2="3_RR_thigh"/>
+        <exclude name="exclude_body_to_abad_hl" body1="trunk" body2="4_RL_thigh"/>
+
+        <exclude name="exclude_body_to_shank_fr" body1="trunk" body2="1_FR_hip"/>
+        <exclude name="exclude_body_to_shank_fl" body1="trunk" body2="2_FL_hip"/>
+        <exclude name="exclude_body_to_shank_hr" body1="trunk" body2="3_RR_hip"/>
+        <exclude name="exclude_body_to_shank_hl" body1="trunk" body2="4_RL_hip"/>
+    </contact>
+</mujoco>

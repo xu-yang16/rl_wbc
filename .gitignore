@@ -1,0 +1,17 @@
+logs/
+third_party/
+__pycache__/
+*.json
+*.so
+.config/
+.nv/
+.vscode/
+build/
+*.h5
+.ipython/
+*.pdf
+*.png
+.cache/
+archived/
+archived_logs/
+tro_plots/
