@@ -10,7 +10,6 @@ build/
 *.h5
 .ipython/
 *.pdf
-*.png
 .cache/
 archived/
 archived_logs/
