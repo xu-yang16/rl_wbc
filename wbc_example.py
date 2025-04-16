@@ -76,26 +76,21 @@ def _generate_example_linear_angular_speed(t):
     vy = 0.2
     wz = 0.8
 
-    # time_points = (0, 1, 9, 10, 15, 20, 25, 30)
-    # speed_points = ((0, 0, 0, 0), (0, 0.6, 0, 0), (0, 0.6, 0, 0), (vx, 0, 0, 0),
-    #                 (0, 0, 0, -wz), (0, -vy, 0, 0), (0, 0, 0, 0), (0, 0, 0, wz))
-
-    time_points = (0, 5, 10, 15, 20, 25, 30)
+    time_points = (0, 3, 6, 9, 12, 15)
     speed_points = (
-        (0, 0, 0, 0),
-        (0, 0, 0, wz),
-        (vx, 0, 0, 0),
-        (0, 0, 0, -wz),
-        (0, -vy, 0, 0),
-        (0, 0, 0, 0),
-        (0, 0, 0, wz),
+        (0, 0, 0),
+        (vx, 0, 0),
+        (0, -vy, 0),
+        (0, 0, wz),
+        (0, 0, -wz),
+        (0, 0, 0),
     )
 
     speed = scipy.interpolate.interp1d(
         time_points, speed_points, kind="nearest", fill_value="extrapolate", axis=0
     )(t)
 
-    return speed[0:3], speed[3]
+    return speed
 
 
 def get_gait_config():
@@ -157,7 +152,7 @@ if __name__ == "__main__":
         body_mass=13.076,
         body_inertia=np.diag(np.array([0.14, 0.35, 0.35]) * 1.5),
         foot_friction_coef=0.4,
-        solver_type="pdhg",
+        solver_type="baseline",
         friction_type="pyramid",
         iter=20,
         warm_up=True,
@@ -183,16 +178,17 @@ if __name__ == "__main__":
             swing_leg_controller.update()
 
             # Update speed comand
-            lin_command, ang_command = _generate_example_linear_angular_speed(
-                robot.time_since_reset
+            command = _generate_example_linear_angular_speed(
+                robot.time_since_reset_scalar
             )
+            robot.set_desired_velocity(command)
             # print(lin_command, ang_command)
             torque_optimizer.desired_linear_velocity = [
-                lin_command[0],
-                lin_command[1],
+                command[0],
+                command[1],
                 0.0,
             ]
-            torque_optimizer.desired_angular_velocity = [0.0, 0.0, ang_command]
+            torque_optimizer.desired_angular_velocity = [0.0, 0.0, command[2]]
 
             motor_action, desired_acc, solved_acc, grf, solver_time = (
                 torque_optimizer.get_action(
@@ -207,7 +203,9 @@ if __name__ == "__main__":
                 robot.render()
 
             if steps_count % 50 == 1:
-                print(f"hz={steps_count / (time.time() - start_time)}")
+                print(
+                    f"hz={steps_count / (time.time() - start_time)}, time={robot.time_since_reset_scalar}"
+                )
 
             # contact_force = np.vstack(
             #     [contact_force, robot.foot_contact_forces[0, :].cpu().numpy()]

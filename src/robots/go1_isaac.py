@@ -285,3 +285,7 @@ class Go1Isaac(IsaacGymRobot):
         # thetas: num_envs x 4
         joint_angles = torch.stack([theta_ab, theta_hip, theta_knee], dim=2)
         return joint_angles.reshape((-1, 12))
+
+    @property
+    def time_since_reset_scalar(self):
+        return self._time_since_reset[0].item()

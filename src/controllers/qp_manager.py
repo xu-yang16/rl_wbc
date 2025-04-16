@@ -442,20 +442,20 @@ class QPManager:
         solver_time = time.time() - start_time
 
         # check constraints
-        cvxpy_violation = np.sum(
-            np.maximum(-H_cpu_np @ x.value - b_cpu_np, np.zeros_like(b_cpu_np))
-        )
-        cvxpy_cost = (
-            0.5 * x.value.T @ (0.5 * (P_cpu_np + P_cpu_np.T)) @ x.value
-            + q_cpu_np.T @ x.value
-        )
+        # cvxpy_violation = np.sum(
+        #     np.maximum(-H_cpu_np @ x.value - b_cpu_np, np.zeros_like(b_cpu_np))
+        # )
+        # cvxpy_cost = (
+        #     0.5 * x.value.T @ (0.5 * (P_cpu_np + P_cpu_np.T)) @ x.value
+        #     + q_cpu_np.T @ x.value
+        # )
 
         return (
-            x.value,
+            torch.tensor(x.value).to(self.device).unsqueeze(0).float(),
             None,
-            cvxpy_violation,
-            cvxpy_cost,
-            solver_time,
+            # cvxpy_violation,
+            # cvxpy_cost,
+            # solver_time,
         )
 
     def bench_pdhg_pyramid(

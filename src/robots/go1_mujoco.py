@@ -53,7 +53,7 @@ class Go1Mujoco(robot.Robot):
         device: str,
         motor_control_mode: MotorControlMode,
         motor_torque_delay_steps: int = 0,
-        gui=True,
+        show_gui=True,
         robot_name: str = "go1",
     ):
         del motor_torque_delay_steps  # unused
@@ -65,7 +65,7 @@ class Go1Mujoco(robot.Robot):
         self.disturb_force = np.array([0, 0, -15])
 
         self.contact_forces_3d = np.zeros(12)
-        self.gui = gui
+        self.show_gui = show_gui
         super().__init__(
             num_envs=num_envs,
             device=device,
@@ -134,7 +134,7 @@ class Go1Mujoco(robot.Robot):
             stand_foot_forces.append(self.foot_contact_forces_numpy)
         # Calibrate foot force sensors
         stand_foot_forces = np.mean(stand_foot_forces, axis=0)
-        self._contact_force_threshold = stand_foot_forces * 0.8
+        self._contact_force_threshold = stand_foot_forces * 0.8 + 1e-3
         ic(self._contact_force_threshold)
 
         self._last_reset_time = self.data.time
@@ -193,20 +193,8 @@ class Go1Mujoco(robot.Robot):
             self._post_physics_step()
             self._state_estimator.update(self._raw_state)
 
-            if motor_control_mode == MotorControlMode.POSITION:
-                continue
-            elif (
-                desired_acc is not None
-                and solved_acc is not None
-                and ff_acc is not None
-            ):
-                self.plot(
-                    desired_acc.squeeze(0).detach().cpu().numpy(),
-                    solved_acc.squeeze(0).detach().cpu().numpy(),
-                    self.acc,
-                    ff_acc.squeeze(0).detach().cpu().numpy(),
-                )
             if self.viewer is not None:
+                self.plot()
                 self.viewer.render()
 
     def _post_physics_step(self):
@@ -241,10 +229,6 @@ class Go1Mujoco(robot.Robot):
             leg_id * 3 : leg_id * 3 + 3, leg_id * 3 : leg_id * 3 + 3
         ]
 
-    def apply_disturbance_force(self, force, body_index=1):
-        if self.apply_disturb:
-            self.data.xfrc_applied[body_index, 0:3] = force
-
     # --- mujoco interfaces ---#
     def load_model(self, xml_path=""):
         os.environ["HOME"] = osp.join(osp.dirname(__file__), "../../")
@@ -256,50 +240,42 @@ class Go1Mujoco(robot.Robot):
         data = mujoco.MjData(model)
 
         mujoco.mj_step(model, data)
-        if not self.gui:
+        if not self.show_gui:
             return model, data, None
-        viewer = mujoco_viewer.MujocoViewer(model, data)
-        self._counter = 0
-        self._last_shadows = False
-        self.offset = 0
+        else:
+            viewer = mujoco_viewer.MujocoViewer(model, data)
+            viewer.cam.azimuth, viewer.cam.elevation, viewer.cam.distance = (
+                86.98996655518393,
+                -16.344481605351135,
+                1.2528117729138861,
+            )
+            viewer.cam.lookat = np.array([-0.08530669, 0.00366923, 0.02845805])
 
-        import pathlib
+            self._last_shadows = False
+            self.offset = 0
 
-        ic(viewer.CONFIG_PATH)
+            # options
+            import glfw
 
-        # options
-        import glfw
+            viewer._key_callback(
+                window=None,
+                key=glfw.KEY_C,
+                scancode=None,
+                action=glfw.RELEASE,
+                mods=None,
+            )
 
-        ic(viewer._contacts)
-        viewer._key_callback(
-            window=None, key=glfw.KEY_C, scancode=None, action=glfw.RELEASE, mods=None
-        )
-        # viewer._key_callback(
-        #     window=None, key=glfw.KEY_TAB, scancode=None, action=glfw.RELEASE, mods=None
-        # )
-        ic(viewer._contacts)
-
-        fig_names = ["acc0", "acc1", "lin_acc2"]
-        line_names = ["desired", "solved", "actual"]
-        new_line_names = [
-            "ff_lin_acc_x",
-            "ff_lin_acc_y",
-            "ff_lin_acc_z",
-            "ff_ang_acc_x",
-            "ff_ang_acc_y",
-            "ff_ang_acc_z",
-        ]
-        for i in range(3):
-            for j in range(3):
-                viewer.add_line_to_fig(line_name=line_names[j], fig_idx=i)
-            for k in range(6):
-                viewer.add_line_to_fig(line_name=new_line_names[k], fig_idx=i)
-            fig = viewer.figs[i]
-            fig.title = fig_names[i]
-            fig.flg_legend = True
-            fig.xlabel = "Timesteps"
-            fig.figurergba[0:4] = np.array([0.2, 0, 0.2, 0.01])
-            fig.gridsize[0:2] = np.array([5, 5])
+            fig_names = ["lin_x", "lin_y", "yaw_rate"]
+            line_names = ["desired", "actual"]
+            for i in range(3):
+                for j in range(2):
+                    viewer.add_line_to_fig(line_name=line_names[j], fig_idx=i)
+                fig = viewer.figs[i]
+                fig.title = fig_names[i]
+                fig.flg_legend = True
+                fig.xlabel = "time"
+                fig.figurergba[0:4] = np.array([0.2, 0, 0.2, 0.01])
+                fig.gridsize[0:2] = np.array([5, 5])
 
         self.model, self.data, self.viewer = model, data, viewer
 
@@ -320,88 +296,27 @@ class Go1Mujoco(robot.Robot):
         # logger.debug(f"tau={tau}")
         self.data.ctrl = tau
 
-        # apply disturbance
-        self.apply_disturbance_force(force=self.disturb_force, body_index=1)
-
         mujoco.mj_step(self.model, self.data)
 
-    def plot(self, desired_acc, solved_acc, actual_acc, ff_acc):
-        if self.viewer is None:
-            return
-        # plots for acc
-        if self.viewer._shadows != self._last_shadows:
-            self.plot_choice += 1
-            self.plot_choice %= 3
-            self._last_shadows = self.viewer._shadows
-            print(f"plot_choice={self.plot_choice}")
-            if self.plot_choice == 0:
-                self.offset = 0
-                for i in range(3):
-                    self.viewer.figs[i].title = f"lin_acc{i}"
-                    self.viewer.figs[i].linepnt = 0
-            elif self.plot_choice == 1:
-                self.offset = 3
-                for i in range(3):
-                    self.viewer.figs[i].title = f"ang_acc{i}"
-                    self.viewer.figs[i].linepnt = 0
-            elif self.plot_choice == 2:
-                self.offset = 6
-                for i in range(3):
-                    self.viewer.figs[i].title = f"ff_acc{i}"
-                    self.viewer.figs[i].linepnt = 0
-        if self.plot_choice == 0 or self.plot_choice == 1:
-            for i in range(3):
-                self.viewer.add_data_to_line(
-                    line_name="desired",
-                    line_data=desired_acc[i + self.offset],
-                    fig_idx=i,
-                )
-                self.viewer.add_data_to_line(
-                    line_name="solved", line_data=solved_acc[i + self.offset], fig_idx=i
-                )
-                self.viewer.add_data_to_line(
-                    line_name="actual",
-                    line_data=actual_acc[i + self.offset],
-                    fig_idx=i,
-                )
-        elif self.plot_choice == 2:
-            for i in range(3):
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_lin_acc_x",
-                    line_data=ff_acc[0],
-                    fig_idx=0,
-                )
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_lin_acc_y",
-                    line_data=ff_acc[1],
-                    fig_idx=0,
-                )
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_lin_acc_z",
-                    line_data=ff_acc[2],
-                    fig_idx=0,
-                )
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_ang_acc_x",
-                    line_data=ff_acc[3],
-                    fig_idx=1,
-                )
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_ang_acc_y",
-                    line_data=ff_acc[4],
-                    fig_idx=1,
-                )
-                self.viewer.add_data_to_line(
-                    line_name=f"ff_ang_acc_z",
-                    line_data=ff_acc[5],
-                    fig_idx=1,
-                )
+    def plot(self):
+        actual_vel = [self.v[0], self.v[1], self.raw_state.imu.gyroscope[2]]
+        for i in range(3):
+            self.viewer.add_data_to_line(
+                line_name="desired",
+                line_data=self._desired_velocity[i],
+                fig_idx=i,
+            )
+            self.viewer.add_data_to_line(
+                line_name="actual",
+                line_data=actual_vel[i],
+                fig_idx=i,
+            )
 
     def receive_observation(self):
         # read state from mujoco
         q = self.data.qpos.astype(np.double)[-12:]
         dq = self.data.qvel.astype(np.double)[-12:]
-        quat = self.data.sensor("imu_quat").data.astype(np.double)  # w, x, y, z
+        quat = self.data.sensor("BodyQuat").data.astype(np.double)  # w, x, y, z
         rotation = R.from_quat(
             np.array([quat[1], quat[2], quat[3], quat[0]])
         )  # R.from_quat requires [x, y, z, w]
@@ -411,10 +326,10 @@ class Go1Mujoco(robot.Robot):
         v = rotation.apply(self.data.qvel[:3], inverse=True).astype(
             np.double
         )  # In the base frame
-        v_truth = self.data.sensor("frame_vel").data.astype(np.double)
+        v_truth = self.data.sensor("BodyVel").data.astype(np.double)
         self.v = v_truth
-        acc = self.data.sensor("imu_acc").data.astype(np.double)
-        omega = self.data.sensor("imu_gyro").data.astype(np.double)
+        acc = self.data.sensor("BodyAcc").data.astype(np.double)
+        omega = self.data.sensor("BodyGyro").data.astype(np.double)
 
         # self.acc[:3] = acc - np.array([0, 0, 9.81])
         # self.acc[2] *= -1
@@ -455,16 +370,16 @@ class Go1Mujoco(robot.Robot):
         raw_state.footForce = np.array(
             [
                 np.linalg.norm(
-                    f[2:3]
+                    f[0:3]
                 ),  # self.data.sensor("FR_foot_force_sensor").data.astype(np.double)[0],
                 np.linalg.norm(
-                    f[5:6]
+                    f[3:6]
                 ),  # self.data.sensor("FL_foot_force_sensor").data.astype(np.double)[0],
                 np.linalg.norm(
-                    f[8:9]
+                    f[6:9]
                 ),  # self.data.sensor("RR_foot_force_sensor").data.astype(np.double)[0],
                 np.linalg.norm(
-                    f[11:12]
+                    f[9:12]
                 ),  # self.data.sensor("RL_foot_force_sensor").data.astype(np.double)[0],
             ]
         )
@@ -577,7 +492,6 @@ class Go1Mujoco(robot.Robot):
     def foot_velocities_in_world_frame(self):
         # TODO: logging.warning("World-frame foot velocity is not yet implemented.")
         raise NotImplementedError
-        return torch.zeros((self._num_envs, 4, 3))
 
     @property
     def foot_velocities_in_base_frame(self):

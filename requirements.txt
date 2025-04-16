@@ -1,0 +1,13 @@
+mujoco
+mujoco-python-viewer
+numpy==1.24.4
+filterpy
+ml_collections
+absl-py
+matplotlib
+qpth
+tensorboard==2.6.0
+torch
+tqdm
+icecream
+loguru

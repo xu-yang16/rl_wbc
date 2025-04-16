@@ -57,25 +57,25 @@ def find_latest_pt(logdir):
 
 def _generate_example_linear_angular_speed(t):
     """Creates an example speed profile based on time for demo purpose."""
-    vx = 1
-    vy = 0.6
+    vx = 0.6
+    vy = 0.2
     wz = 0.8
 
     time_points = (0, 3, 6, 9, 12, 15)
     speed_points = (
-        (0, 0, 0, 0),
-        (0, 0, 0, wz),
-        (vx, 0, 0, 0),
-        (0, 0, -vy, 0),
-        (vx, 0, 0, 0),
-        (0, 0, 0, 0),
+        (0, 0, 0),
+        (vx, 0, 0),
+        (0, -vy, 0),
+        (0, 0, wz),
+        (0, 0, -wz),
+        (0, 0, 0),
     )
 
     speed = scipy.interpolate.interp1d(
         time_points, speed_points, kind="nearest", fill_value="extrapolate", axis=0
     )(t)
 
-    return speed[0:3], speed[3]
+    return speed
 
 
 def main(argv):
@@ -156,12 +156,13 @@ def main(argv):
             steps_count += 1
             action = policy(state)
 
-            lin_command, ang_command = _generate_example_linear_angular_speed(
+            command = _generate_example_linear_angular_speed(
                 env.robot.time_since_reset_scalar
             )
-            env._env._desired_cmd[:, 0] = lin_command[0]
-            env._env._desired_cmd[:, 1] = lin_command[1]
-            env._env._desired_cmd[:, 2] = ang_command
+            env._env._robot.set_desired_velocity(command)
+            env._env._desired_cmd[:, 0] = command[0]
+            env._env._desired_cmd[:, 1] = command[1]
+            env._env._desired_cmd[:, 2] = command[2]
             # logger.debug(f"cmd: {lin_command}, {ang_command}")
 
             state, _, reward, done, info = env.step(action)

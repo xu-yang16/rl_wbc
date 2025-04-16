@@ -77,6 +77,9 @@ class Robot:
             self.robot_param_manager.robot.l_hip, device=device
         ).float()
 
+        # for plot
+        self._desired_velocity = np.zeros(3)
+
     def init_motors(
         self,
         motor_control_mode: MotorControlMode = MotorControlMode.HYBRID,
@@ -397,3 +400,7 @@ class Robot:
         flattened_jacobian[6:9, 6:9] = J[2]
         flattened_jacobian[9:12, 9:12] = J[3]
         return flattened_jacobian
+
+    # ----------------------- for plot -----------------------
+    def set_desired_velocity(self, desired_velocity: np.array):
+        self._desired_velocity = desired_velocity
