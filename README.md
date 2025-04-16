@@ -2,7 +2,7 @@
 
 This repository contains the code for the training framework of the RL_WBC project. The control framework consists of a high-level RL policy and a low-level Whole-Body Control (WBC) policy. 
 
-![](framework.png)
+![](resources/framework.png)
 
 Acknowledgement: The training framework is partially based on the [rsl_rl](https://github.com/leggedrobotics/rsl_rl) and [cajun](https://github.com/yxyang/cajun).
 

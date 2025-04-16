@@ -61,17 +61,13 @@ def _generate_example_linear_angular_speed(t):
     vy = 0.6
     wz = 0.8
 
-    # time_points = (0, 1, 9, 10, 15, 20, 25, 30)
-    # speed_points = ((0, 0, 0, 0), (0, 0.6, 0, 0), (0, 0.6, 0, 0), (vx, 0, 0, 0),
-    #                 (0, 0, 0, -wz), (0, -vy, 0, 0), (0, 0, 0, 0), (0, 0, 0, wz))
-
     time_points = (0, 3, 6, 9, 12, 15)
     speed_points = (
         (0, 0, 0, 0),
         (0, 0, 0, wz),
         (vx, 0, 0, 0),
         (0, 0, -vy, 0),
-        (vx, 0, 0, wz),
+        (vx, 0, 0, 0),
         (0, 0, 0, 0),
     )
 
@@ -98,7 +94,6 @@ def main(argv):
         import isaacgym
 
     from src.envs.trot_env import TrotEnv
-    from src.envs.trot_env_e2e import TrotEnvE2E
     import torch
     from rsl_rl.runners import OnPolicyRunner
     import yaml
@@ -162,7 +157,7 @@ def main(argv):
             action = policy(state)
 
             lin_command, ang_command = _generate_example_linear_angular_speed(
-                env.robot.time_since_reset
+                env.robot.time_since_reset_scalar
             )
             env._env._desired_cmd[:, 0] = lin_command[0]
             env._env._desired_cmd[:, 1] = lin_command[1]

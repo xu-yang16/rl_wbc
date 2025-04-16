@@ -9,7 +9,6 @@ from ml_collections import config_flags
 import isaacgym
 import torch
 from src.envs.trot_env import TrotEnv
-from src.envs.trot_env_e2e import TrotEnvE2E
 
 from rsl_rl.runners import OnPolicyRunner
 from src.envs import env_wrappers

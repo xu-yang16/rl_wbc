@@ -61,16 +61,21 @@ class Robot:
         # for go1
         self._hip_offset = torch.tensor(
             self.robot_param_manager.robot.hip_offset, device=device
+        ).float()
+        self._hip_positions_in_body_frame = (
+            torch.tensor(self.robot_param_manager.robot.normal_stand, device=device)
+            .repeat(self.num_envs, 1, 1)
+            .float()
         )
-        self._hip_positions_in_body_frame = torch.tensor(
-            self.robot_param_manager.robot.normal_stand, device=device
-        ).repeat(self.num_envs, 1, 1)
         self.l_up, self.l_low, self.foot_size = (
             self.robot_param_manager.robot.l_up,
             self.robot_param_manager.robot.l_low,
             self.robot_param_manager.robot.foot_size,
         )
-        self.l_hip = torch.tensor(self.robot_param_manager.robot.l_hip, device=device)
+        self.l_hip = self.robot_param_manager.robot.l_hip
+        self.l_hip_torch = torch.tensor(
+            self.robot_param_manager.robot.l_hip, device=device
+        ).float()
 
     def init_motors(
         self,
@@ -330,7 +335,7 @@ class Robot:
         foot_positions_in_hip_frame = foot_local_positions - self.hip_offset
         l_up = self.l_up
         l_low = self.l_low + self.foot_size
-        l_hip = self.l_hip
+        l_hip = self.l_hip_torch
 
         x = foot_positions_in_hip_frame[:, :, 0]
         y = foot_positions_in_hip_frame[:, :, 1]
