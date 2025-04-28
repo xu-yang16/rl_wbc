@@ -179,9 +179,6 @@ class OnPolicyRunner:
                 mean_entropy_loss,
                 mean_kl,
             ) = self.alg.update()
-            print(
-                f"mean={self.critic_obs_normalizer.mean.abs().max()}, std={self.critic_obs_normalizer.std.abs().max()}"
-            )
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:

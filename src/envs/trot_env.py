@@ -314,11 +314,11 @@ class TrotEnv:
         # suppose action \in [-1, 1], we need to rescale to action_lb and action_ub
         min_ = self.action_space[0]
         max_ = self.action_space[1]
+        self._last_action = torch.clone(action)
         action = (action + 1) / 2 * (max_ - min_) + min_
 
         self._steps_count += 1
         self.common_step_count += 1
-        self._last_action = torch.clone(action)
         self._action = torch.clip(action, self._action_lb, self._action_ub)
         com_action, foot_action = self._split_action(self._action)
 
@@ -574,7 +574,7 @@ class TrotEnv:
             ),
             dim=1,
         )
-        self._actor_obs_buf = torch.concatenate((cmd_obs, phase_obs, robot_obs), dim=1)
+        self._actor_obs_buf = torch.concatenate((robot_obs, cmd_obs, phase_obs), dim=1)
         self._actor_obs_history_buf = torch.cat(
             (
                 self._actor_obs_history_buf[:, self._num_actor_obs :],
@@ -652,7 +652,7 @@ class TrotEnv:
             )
             limb_contact = torch.sum(limb_contact, dim=1)
             is_unsafe = torch.logical_or(is_unsafe, limb_contact > 0)
-        return is_unsafe  # torch.logical_or(self._episode_terminated(), is_unsafe)
+        return torch.logical_or(self._episode_terminated(), is_unsafe)
 
     def close(self):
         ic(torch.mean(self._action, dim=0))

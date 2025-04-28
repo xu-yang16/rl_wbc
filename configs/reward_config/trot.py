@@ -32,17 +32,17 @@ def get_controller_config():
     config.resampling_time = 10.0
     config.use_command_curriculum = False
     config.goal_lb = torch.tensor(
-        [-0.0, -0.0, -0.0], dtype=torch.float
+        [-1.0, -1.0, -1.0], dtype=torch.float
     )  # Lin_x, Lin_y, Rot_z
-    config.goal_ub = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float)
+    config.goal_ub = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float)
 
     # action
     config.action_lb = np.array(
         [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0] + [-0.05, -0.03, -0.05] * 1
     )
     config.action_ub = np.array([3.0, 3.0, 3.0, 3.0, 3.0, 3.0] + [0.05, 0.03, 0.05] * 1)
-    config.action_lb[:6] *= 10
-    config.action_ub[:6] *= 10
+    config.action_lb[:6] *= 2
+    config.action_ub[:6] *= 2
 
     config.num_actions = config.action_lb.shape[0]
     config.num_actor_obs = 77

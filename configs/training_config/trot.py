@@ -21,7 +21,7 @@ def get_training_config():
     config.policy = policy_config
 
     encoder_config = ConfigDict()
-    encoder_config.num_output_dim = 0
+    encoder_config.num_output_dim = 3
     encoder_config.hidden_dims = [256, 128]
     encoder_config.activation = "elu"
     config.encoder = encoder_config

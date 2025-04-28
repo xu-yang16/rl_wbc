@@ -138,10 +138,7 @@ class RolloutStorage:
 
         # Compute and normalize the advantages
         self.advantages = self.returns - self.values
-        print(f"advantage mean: {self.advantages.mean()}, std: {self.advantages.std()}")
-        print(
-            f"advantage: {self.advantages[:, 0]}, returns: {self.returns[:, 0]}, values: {self.values[:, 0]}"
-        )
+
         self.advantages = (self.advantages - self.advantages.mean()) / (
             self.advantages.std() + 1e-8
         )
