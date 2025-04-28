@@ -9,10 +9,9 @@ import statistics
 
 from torch.utils.tensorboard import SummaryWriter
 import torch
-from icecream import ic
 
 from rsl_rl.algorithms import PPO
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent
+from rsl_rl.modules import ActorCritic, MLP_Encoder, EmpiricalNormalization
 from rsl_rl.env import VecEnv
 
 
@@ -20,21 +19,49 @@ class OnPolicyRunner:
     def __init__(self, env: VecEnv, train_cfg, log_dir=None, device="cpu"):
 
         self.cfg = train_cfg["runner"]
+        self.encoder_cfg = train_cfg["encoder"]
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
-        if self.env.num_privileged_obs is not None:
-            num_critic_obs = self.env.num_privileged_obs
-        else:
-            num_critic_obs = self.env.num_obs
-        actor_critic_class = eval(self.cfg["policy_class_name"])  # ActorCritic
-        num_actor_obs = self.env.num_obs
-        actor_critic: ActorCritic = actor_critic_class(
-            num_actor_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
+
+        encoder_output_dim = self.encoder_cfg["num_output_dim"]
+        num_actor_obs_with_latent = self.env.num_actor_obs + encoder_output_dim
+        num_actor_obs_history = self.env.num_actor_obs * self.env.history_length
+        num_critic_obs_with_latent = self.env.num_critic_obs + encoder_output_dim
+
+        # normalizer
+        self.actor_obs_normalizer = EmpiricalNormalization(
+            shape=[self.env.num_actor_obs], until=1.0e8
         ).to(self.device)
-        alg_class = eval(self.cfg["algorithm_class_name"])  # PPO
-        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        self.actor_obs_history_normalizer = EmpiricalNormalization(
+            shape=[num_actor_obs_history], until=1.0e8
+        ).to(self.device)
+        self.critic_obs_normalizer = EmpiricalNormalization(
+            shape=[self.env.num_critic_obs], until=1.0e8
+        ).to(self.device)
+
+        if encoder_output_dim != 0:
+            encoder: MLP_Encoder = MLP_Encoder(
+                num_input_dim=num_actor_obs_history,
+                num_output_dim=encoder_output_dim,
+                **self.policy_cfg,
+            ).to(self.device)
+        else:
+            encoder = None
+        actor_critic: ActorCritic = ActorCritic(
+            num_actor_obs_with_latent,
+            num_critic_obs_with_latent,
+            self.env.num_actions,
+            **self.policy_cfg,
+        ).to(self.device)
+
+        self.alg: PPO = PPO(
+            actor_critic=actor_critic,
+            encoder=encoder,
+            device=self.device,
+            **self.alg_cfg,
+        )
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
 
@@ -42,8 +69,9 @@ class OnPolicyRunner:
         self.alg.init_storage(
             self.env.num_envs,
             self.num_steps_per_env,
-            [num_actor_obs],
-            [self.env.num_privileged_obs],
+            [self.env.num_actor_obs],
+            [num_actor_obs_history],
+            [num_critic_obs_with_latent],
             [self.env.num_actions],
         )
 
@@ -54,7 +82,7 @@ class OnPolicyRunner:
         self.tot_time = 0
         self.current_learning_iteration = 0
 
-        _, _ = self.env.reset()
+        self.env.reset()
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
@@ -64,11 +92,16 @@ class OnPolicyRunner:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
             )
-        obs = self.env.get_observations()
-        privileged_obs = self.env.get_privileged_observations()
-        critic_obs = privileged_obs if privileged_obs is not None else obs
-        obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
-        self.alg.actor_critic.train()  # switch to train mode (for dropout for example)
+        actor_obs, actor_obs_history, critic_obs = self.env.get_all_observations()
+        actor_obs, actor_obs_history, critic_obs = self.normalize_obs(
+            actor_obs, actor_obs_history, critic_obs
+        )
+        actor_obs, actor_obs_history, critic_obs = (
+            actor_obs.to(self.device),
+            actor_obs_history.to(self.device),
+            critic_obs.to(self.device),
+        )
+        self.train_mode()
 
         ep_infos = []
         rewbuffer = deque(maxlen=100)
@@ -86,18 +119,29 @@ class OnPolicyRunner:
             # Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
-                    actions = self.alg.act(obs, critic_obs)
-                    obs, privileged_obs, rewards, dones, infos, *_ = self.env.step(
-                        actions
+                    actions = self.alg.act(actor_obs, actor_obs_history, critic_obs)
+                    (
+                        actor_obs,
+                        actor_obs_history,
+                        critic_obs,
+                        rewards,
+                        dones,
+                        infos,
+                        *_,
+                    ) = self.env.step(actions)
+                    actor_obs, actor_obs_history, critic_obs = self.normalize_obs(
+                        actor_obs, actor_obs_history, critic_obs
                     )
-                    critic_obs = privileged_obs if privileged_obs is not None else obs
-                    obs, critic_obs, rewards, dones = (
-                        obs.to(self.device),
+                    actor_obs, actor_obs_history, critic_obs, rewards, dones = (
+                        actor_obs.to(self.device),
+                        actor_obs_history.to(self.device),
                         critic_obs.to(self.device),
                         rewards.to(self.device),
                         dones.to(self.device),
                     )
-                    self.alg.process_env_step(rewards, dones, infos)
+                    self.alg.process_env_step(
+                        rewards, dones, infos, actor_next_obs=actor_obs
+                    )
 
                     if self.log_dir is not None:
                         # Book keeping
@@ -120,17 +164,24 @@ class OnPolicyRunner:
 
                 # Learning step
                 start = stop
-                self.alg.compute_returns(critic_obs)
+                if self.alg.encoder is not None:
+                    encoder_out = self.alg.encoder.encode(actor_obs_history)
+                    self.alg.compute_returns(
+                        torch.cat((critic_obs, encoder_out), dim=-1)
+                    )
+                else:
+                    self.alg.compute_returns(critic_obs)
 
             (
                 mean_value_loss,
+                mean_encoder_loss,
                 mean_surrogate_loss,
-                mean_kl_div,
-                mean_clip_fraction,
                 mean_entropy_loss,
-                explained_variance,
-                num_updates,
+                mean_kl,
             ) = self.alg.update()
+            print(
+                f"mean={self.critic_obs_normalizer.mean.abs().max()}, std={self.critic_obs_normalizer.std.abs().max()}"
+            )
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -141,11 +192,14 @@ class OnPolicyRunner:
 
         self.env.close()
         self.current_learning_iteration += num_learning_iterations
-        self.save(
-            os.path.join(
-                self.log_dir, "model_{}.pt".format(self.current_learning_iteration)
-            )
-        )
+        self.save(os.path.join(self.log_dir, "model_latest.pt"))
+
+    def normalize_obs(self, actor_obs, actor_obs_history, critic_obs):
+        # normalize obs
+        actor_obs = self.actor_obs_normalizer(actor_obs)
+        actor_obs_history = self.actor_obs_history_normalizer(actor_obs_history)
+        critic_obs = self.critic_obs_normalizer(critic_obs)
+        return actor_obs, actor_obs_history, critic_obs
 
     def log(self, locs, width=80, pad=35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
@@ -190,22 +244,14 @@ class OnPolicyRunner:
         self.writer.add_scalar(
             "Loss/value_function", locs["mean_value_loss"], locs["it"]
         )
-        self.writer.add_scalar(
-            "Loss/value_function_explained_variance",
-            locs["explained_variance"],
-            locs["it"],
-        )
+        self.writer.add_scalar("Loss/encoder", locs["mean_encoder_loss"], locs["it"])
         self.writer.add_scalar(
             "Loss/surrogate", locs["mean_surrogate_loss"], locs["it"]
         )
-        self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
         self.writer.add_scalar("Loss/entropy", locs["mean_entropy_loss"], locs["it"])
+        self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
         self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
-        self.writer.add_scalar("Policy/approx_kl", locs["mean_kl_div"], locs["it"])
-        self.writer.add_scalar(
-            "Policy/clip_fraction", locs["mean_clip_fraction"], locs["it"]
-        )
-        self.writer.add_scalar("Policy/num_updates", locs["num_updates"], locs["it"])
+        self.writer.add_scalar("Policy/mean_kl", locs["mean_kl"], locs["it"])
         self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
         self.writer.add_scalar(
             "Perf/collection time", locs["collection_time"], locs["it"]
@@ -240,7 +286,6 @@ class OnPolicyRunner:
                 f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                 f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
-                f"""{'Explained Variance:':>{pad}} {locs['explained_variance']:.4f}\n"""
                 f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
                 f"""{'Entropy loss:':>{pad}} {locs['mean_entropy_loss']:.4f}\n"""
                 f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
@@ -256,9 +301,7 @@ class OnPolicyRunner:
                 f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                 f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
-                f"""{'Explained Variance:':>{pad}} {locs['explained_variance']:.4f}\n"""
                 f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
-                f"""{'Entropy loss:':>{pad}} {locs['mean_entropy_loss']:.4f}\n"""
                 f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
             )
             #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
@@ -275,27 +318,69 @@ class OnPolicyRunner:
         )
         print(log_string)
 
-    def save(self, path, infos=None):
+    def save(self, path: str, infos=None):
         torch.save(
             {
                 "model_state_dict": self.alg.actor_critic.state_dict(),
                 "optimizer_state_dict": self.alg.optimizer.state_dict(),
                 "iter": self.current_learning_iteration,
                 "infos": infos,
+                "actor_obs_norm_state_dict": self.actor_obs_normalizer.state_dict(),
+                "actor_obs_history_norm_state_dict": self.actor_obs_history_normalizer.state_dict(),
+                "critic_obs_norm_state_dict": self.critic_obs_normalizer.state_dict(),
             },
             path,
         )
 
-    def load(self, path, load_optimizer=True):
-        loaded_dict = torch.load(path, map_location="cpu")
-        self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
-        if load_optimizer:
+    def load(self, path: str, load_optimizer: bool = True):
+        loaded_dict = torch.load(path, map_location="cpu", weights_only=False)
+        # -- Load model
+        resumed_training = self.alg.actor_critic.load_state_dict(
+            loaded_dict["model_state_dict"]
+        )
+        if resumed_training:
+            # if a previous training is resumed, the actor/student normalizer is loaded for the actor/student
+            # and the critic/teacher normalizer is loaded for the critic/teacher
+            self.actor_obs_normalizer.load_state_dict(
+                loaded_dict["actor_obs_norm_state_dict"]
+            )
+            self.actor_obs_history_normalizer.load_state_dict(
+                loaded_dict["actor_obs_history_norm_state_dict"]
+            )
+            self.critic_obs_normalizer.load_state_dict(
+                loaded_dict["critic_obs_norm_state_dict"]
+            )
+        if load_optimizer and resumed_training:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
-        self.current_learning_iteration = loaded_dict["iter"]
+        if resumed_training:
+            self.current_learning_iteration = loaded_dict["iter"]
         return loaded_dict["infos"]
 
     def get_inference_policy(self, device=None):
-        self.alg.actor_critic.eval()  # switch to evaluation mode (dropout for example)
+        self.eval_mode()
         if device is not None:
             self.alg.actor_critic.to(device)
-        return self.alg.actor_critic.act_inference
+        policy = self.alg.policy.act_inference
+        if device is not None:
+            self.actor_obs_normalizer.to(device)
+        policy = lambda x: self.alg.policy.act_inference(
+            self.actor_obs_normalizer(x)
+        )  # noqa: E731
+        return policy
+
+    def train_mode(self):
+        # switch to train mode (for dropout for example)
+        self.alg.actor_critic.train()
+
+        # normalizer
+        self.actor_obs_normalizer.train()
+        self.actor_obs_history_normalizer.train()
+        self.critic_obs_normalizer.train()
+
+    def eval_mode(self):
+        self.alg.actor_critic.eval()
+
+        # normalizer
+        self.actor_obs_normalizer.eval()
+        self.actor_obs_history_normalizer.eval()
+        self.critic_obs_normalizer.eval()

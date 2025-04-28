@@ -20,11 +20,17 @@ def get_training_config():
     policy_config.activation = "elu"
     config.policy = policy_config
 
+    encoder_config = ConfigDict()
+    encoder_config.num_output_dim = 0
+    encoder_config.hidden_dims = [256, 128]
+    encoder_config.activation = "elu"
+    config.encoder = encoder_config
+
     alg_config = ConfigDict()
     alg_config.value_loss_coef = 1.0
     alg_config.use_clipped_value_loss = True
     alg_config.clip_param = 0.2
-    alg_config.entropy_coef = 0.005
+    alg_config.entropy_coef = 0.01
     alg_config.num_learning_epochs = 5
     alg_config.num_mini_batches = 4
     alg_config.learning_rate = 1e-3
@@ -42,7 +48,6 @@ def get_training_config():
     runner_config.save_interval = 100
     runner_config.experiment_name = "trot_pdhg"
     runner_config.max_iterations = 1000
-    runner_config.empirical_normalization = False
     # runner_config.resume = False
     # runner_config.load_run = -1
     # runner_config.checkpoint = -1

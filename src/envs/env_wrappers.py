@@ -32,10 +32,10 @@ class RangeNormalize(AttributeModifier):
 
         self.obs_history = torch.zeros(
             self._env.num_envs,
-            self._env.history_length * self._env.num_obs,
+            self._env.history_length * self._env.num_actor_obs,
             device=self._device,
         )
-        self.num_obs = self._env.history_length * self._env.num_obs
+        self.num_obs = self._env.history_length * self._env.num_actor_obs
 
     @property
     def observation_space(self):
@@ -58,7 +58,7 @@ class RangeNormalize(AttributeModifier):
         return self.obs_history, privileged_obs, reward, done, info
 
     def reset(self):
-        observ, privileged_obs = self._env.reset()
+        actor_obs, actor_obs_history, critic_obs = self._env.reset()
         observ = self._normalize_observ(observ)
         self.obs_history = torch.cat(
             (self.obs_history[:, self._env.num_obs :], observ), dim=-1

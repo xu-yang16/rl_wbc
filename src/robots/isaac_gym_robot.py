@@ -77,7 +77,7 @@ class IsaacGymRobot:
         calf_names: List[str],
         thigh_names: List[str],
         num_actions: int = 6,
-        num_obs: int = 10,
+        num_actor_obs: int = 10,
         domain_rand: bool = False,
         terrain_type: str = "flat",
     ):
@@ -125,8 +125,8 @@ class IsaacGymRobot:
         self._action = torch.zeros(
             self._num_envs, num_actions, device=self._device, requires_grad=False
         )
-        self._obs = torch.zeros(
-            self._num_envs, num_obs, device=self._device, requires_grad=False
+        self._actor_obs = torch.zeros(
+            self._num_envs, num_actor_obs, device=self._device, requires_grad=False
         )
 
     def _create_terrain(self, terrain_type: str):

@@ -22,25 +22,26 @@ class VecEnv(ABC):
 
     num_envs: int
     """Number of environments."""
-    num_obs: int
+    num_actor_obs: int
+    history_length: int
     """Number of observations."""
-    num_privileged_obs: int
+    num_critic_obs: int
     """Number of privileged observations."""
     num_actions: int
     """Number of actions."""
     max_episode_length: int
-    """Maximum episode length."""
-    privileged_obs_buf: torch.Tensor
-    """Buffer for privileged observations."""
-    obs_buf: torch.Tensor
-    """Buffer for observations."""
-    rew_buf: torch.Tensor
-    """Buffer for rewards."""
-    reset_buf: torch.Tensor
-    """Buffer for resets."""
-    episode_length_buf: torch.Tensor  # current episode duration
-    """Buffer for current episode lengths."""
-    extras: dict
+    # """Maximum episode length."""
+    # critic_obs_buf: torch.Tensor
+    # """Buffer for privileged observations."""
+    # actor_obs_buf: torch.Tensor
+    # """Buffer for observations."""
+    # rew_buf: torch.Tensor
+    # """Buffer for rewards."""
+    # reset_buf: torch.Tensor
+    # """Buffer for resets."""
+    # episode_length_buf: torch.Tensor  # current episode duration
+    # """Buffer for current episode lengths."""
+    # extras: dict
     """Extra information (metrics).
 
     Extra information is stored in a dictionary. This includes metrics such as the episode reward, episode length,
@@ -54,7 +55,7 @@ class VecEnv(ABC):
     """
 
     @abstractmethod
-    def get_observations(self) -> tuple[torch.Tensor, dict]:
+    def get_all_observations(self) -> tuple[torch.Tensor, dict]:
         """Return the current observations.
 
         Returns:

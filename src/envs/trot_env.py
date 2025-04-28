@@ -34,17 +34,29 @@ class TrotEnv:
         self._config = config
         self._use_real_robot = use_real_robot
 
-        self._num_obs = config.num_obs
+        self._num_actor_obs = config.num_actor_obs
+        self._history_length = config.history_length
+        self._num_critic_obs = config.num_critic_obs
         self._num_actions = config.num_actions
-        self._obs_buf = None
-        self._privileged_obs_buf = None
+        self._actor_obs_buf = None
+        self._critic_obs_buf = None
         self._action_lb = to_torch(self._config.action_lb, device=self._device)
         self._action_ub = to_torch(self._config.action_ub, device=self._device)
 
         self._goal_lb = to_torch(self._config.goal_lb, device=self._device)
         self._goal_ub = to_torch(self._config.goal_ub, device=self._device)
         self._construct_observation_and_action_space()
-        self._history_length = self._config.history_length
+
+        self._actor_obs_buf = torch.zeros(
+            (self._num_envs, self._num_actor_obs), device=self._device
+        )
+        self._actor_obs_history_buf = torch.zeros(
+            (self._num_envs, self._num_actor_obs * self._history_length),
+            device=self._device,
+        )
+        self._critic_obs_buf = torch.zeros(
+            (self._num_envs, self._num_critic_obs), device=self._device
+        )
 
         # Set up robot and controller
         use_gpu = "cuda" in device
@@ -69,7 +81,7 @@ class TrotEnv:
                 motor_control_mode=MotorControlMode.HYBRID,
                 motor_torque_delay_steps=self._config.get("motor_torque_delay_steps"),
                 num_actions=self._num_actions,
-                num_obs=self._num_obs,
+                num_actor_obs=self._num_actor_obs,
                 domain_rand=self._config.get("randomized"),
                 terrain_type=self._config.get("terrain"),
                 robot_name=robot_name,
@@ -268,9 +280,6 @@ class TrotEnv:
                 torch.abs(self._desired_cmd[:, 2])
             )
 
-            self._obs_buf = self._get_observations()
-            self._privileged_obs_buf = self._get_privileged_observations()
-
             for reward_name in self._episode_sums.keys():
                 if reward_name in self._reward_names:
                     # Normalize by time
@@ -291,10 +300,22 @@ class TrotEnv:
             self._gait_generator.reset_idx(env_ids)
             self._resample_command(env_ids)
 
-        return self._obs_buf, self._privileged_obs_buf
+            self._compute_all_observations()
+            self._actor_obs_buf = self.get_actor_observations()
+            self._actor_obs_history_buf[env_ids] = self._actor_obs_buf[env_ids].repeat(
+                1, self._history_length
+            )
+            self._critic_obs_buf = self._actor_obs_buf.clone()
+
+        return self._actor_obs_buf, self._actor_obs_history_buf, self._critic_obs_buf
 
     # ----------------- Step -----------------
     def step(self, action: torch.Tensor):
+        # suppose action \in [-1, 1], we need to rescale to action_lb and action_ub
+        min_ = self.action_space[0]
+        max_ = self.action_space[1]
+        action = (action + 1) / 2 * (max_ - min_) + min_
+
         self._steps_count += 1
         self.common_step_count += 1
         self._last_action = torch.clone(action)
@@ -305,16 +326,24 @@ class TrotEnv:
         dones = torch.zeros(self._num_envs, device=self._device, dtype=torch.bool)
         logs = []
 
+        desired_lin_vel = torch.zeros((self._num_envs, 3), device=self._device)
+        desired_lin_vel[:, :2] = self._desired_cmd[:, :2]
+        desired_ang_vel = torch.zeros((self._num_envs, 3), device=self._device)
+        desired_ang_vel[:, 2] = self._desired_cmd[:, 2]
+        self._torque_optimizer._desired_linear_velocity = desired_lin_vel
+        self._torque_optimizer._desired_angular_velocity = desired_ang_vel
+        self._torque_optimizer.rl_gains = com_action[:, :]
+
         for step in range(
             max(int(self._config.env_dt / self._robot.control_timestep), 1)
         ):
             if self._use_real_robot == 2:
                 self._robot.state_estimator.update_foot_contact(
                     self._gait_generator.desired_contact_state
-                )  # pytype: disable=attribute-error
+                )
                 self._robot.update_desired_foot_contact(
                     self._gait_generator.desired_contact_state
-                )  # pytype: disable=attribute-error
+                )
 
             self.gait_generator.update()
             self._swing_leg_controller.update()
@@ -325,24 +354,11 @@ class TrotEnv:
                 )
             )
 
-            desired_lin_vel = torch.zeros((self._num_envs, 3), device=self._device)
-            desired_lin_vel[:, :2] = self._desired_cmd[:, :2]
-            desired_ang_vel = torch.zeros((self._num_envs, 3), device=self._device)
-            desired_ang_vel[:, 2] = self._desired_cmd[:, 2]
-            self._torque_optimizer._desired_linear_velocity = desired_lin_vel
-            self._torque_optimizer._desired_angular_velocity = desired_ang_vel
-
-            self._torque_optimizer.rl_gains = com_action[:, :]
-
-            (
-                motor_action,
-                self._desired_acc,
-                self._solved_acc,
-                _,
-                solver_time,
-            ) = self._torque_optimizer.get_action(
-                self._gait_generator.desired_contact_state,
-                swing_foot_position=desired_foot_positions,
+            (motor_action, self._desired_acc, self._solved_acc, *_) = (
+                self._torque_optimizer.get_action(
+                    self._gait_generator.desired_contact_state,
+                    swing_foot_position=desired_foot_positions,
+                )
             )
 
             if self._use_real_robot == 2 or self._use_real_robot == 1:
@@ -369,7 +385,7 @@ class TrotEnv:
                         solved_acc_body_frame=self._solved_acc,
                         foot_positions_in_base_frame=self._robot.foot_positions_in_base_frame,
                         env_action=action,
-                        env_obs=torch.clone(self._obs_buf),
+                        env_obs=torch.clone(self._actor_obs_buf),
                     )
                 )
                 logs[-1]["base_acc"] = np.array(
@@ -381,8 +397,6 @@ class TrotEnv:
 
             self._robot.step(motor_action)
 
-            self._obs_buf = self._get_observations()
-            self._privileged_obs_buf = self.get_privileged_observations()
             rewards = self.get_reward()
             dones = torch.logical_or(dones, self._is_done())
             sum_reward += rewards * torch.logical_not(dones)
@@ -402,11 +416,20 @@ class TrotEnv:
         if self._use_real_robot == 0:
             self.reset_idx(dones.nonzero(as_tuple=False).flatten())
 
-        if self._use_real_robot == 0 and self._show_gui:
-            self._robot.render()
-            self._robot._action = self._action
-            self._robot._obs = self._obs_buf
-        return self._obs_buf, self._privileged_obs_buf, sum_reward, dones, self._extras
+            if self._show_gui:
+                self._robot.render()
+                self._robot._action = self._action
+                self._robot._actor_obs = self._actor_obs_buf
+
+        self._compute_all_observations()
+        return (
+            self._actor_obs_buf,
+            self._actor_obs_history_buf,
+            self._critic_obs_buf,
+            sum_reward,
+            dones,
+            self._extras,
+        )
 
     def _split_action(self, action):
         com_action = action[:, :6]
@@ -467,7 +490,7 @@ class TrotEnv:
                     # ic(self._config.goal_ub[2])
 
     # ----------------- Observations -----------------
-    def _get_observations(self):
+    def _compute_all_observations(self):
         # if self._use_real_robot == 1:
         #     self._desired_cmd[:] = 0.0
         if self._use_real_robot == 2:  # for real robot, keep still
@@ -551,17 +574,29 @@ class TrotEnv:
             ),
             dim=1,
         )
-        obs = torch.concatenate((cmd_obs, phase_obs, robot_obs), dim=1)
-        return obs
+        self._actor_obs_buf = torch.concatenate((cmd_obs, phase_obs, robot_obs), dim=1)
+        self._actor_obs_history_buf = torch.cat(
+            (
+                self._actor_obs_history_buf[:, self._num_actor_obs :],
+                self._actor_obs_buf,
+            ),
+            dim=-1,
+        )
+        self._critic_obs_buf = self._actor_obs_buf.clone()
 
-    def get_observations(self):
-        return self._obs_buf
+    def get_all_observations(self):
+        return self._actor_obs_buf, self._actor_obs_history_buf, self._critic_obs_buf
 
-    def _get_privileged_observations(self):
-        return None
+    def get_actor_observations(self):
+        return self._actor_obs_buf
 
-    def get_privileged_observations(self):
-        return self._privileged_obs_buf
+    def get_actor_observations_history(self):
+        return self._actor_obs_history_buf.view(
+            self._num_envs, self._history_length, self._num_actor_obs
+        )
+
+    def get_critic_observations(self):
+        return self._critic_obs_buf
 
     # ----------------- Rewards -----------------
     def get_reward(self):
@@ -621,7 +656,7 @@ class TrotEnv:
 
     def close(self):
         ic(torch.mean(self._action, dim=0))
-        ic(torch.mean(self._obs_buf, dim=0))
+        ic(torch.mean(self._actor_obs_buf, dim=0))
 
     @property
     def robot(self):
@@ -662,16 +697,16 @@ class TrotEnv:
         return self._num_envs
 
     @property
-    def num_obs(self):
-        return self._num_obs
+    def num_actor_obs(self):
+        return self._num_actor_obs
+
+    @property
+    def num_critic_obs(self):
+        return self._num_critic_obs
 
     @property
     def history_length(self):
         return self._history_length
-
-    @property
-    def num_privileged_obs(self):
-        return None
 
     @property
     def num_actions(self):

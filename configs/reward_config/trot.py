@@ -32,9 +32,9 @@ def get_controller_config():
     config.resampling_time = 10.0
     config.use_command_curriculum = False
     config.goal_lb = torch.tensor(
-        [-1.0, -1.0, -1.0], dtype=torch.float
+        [-0.0, -0.0, -0.0], dtype=torch.float
     )  # Lin_x, Lin_y, Rot_z
-    config.goal_ub = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float)
+    config.goal_ub = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float)
 
     # action
     config.action_lb = np.array(
@@ -45,8 +45,9 @@ def get_controller_config():
     config.action_ub[:6] *= 10
 
     config.num_actions = config.action_lb.shape[0]
-    config.num_obs = 3 + 2 * 4 + 4 + 12 * 4 + config.num_actions + 5
+    config.num_actor_obs = 77
     config.history_length = 10
+    config.num_critic_obs = 77
 
     config.base_position_kp = np.array([0.0, 0.0, 50.0]) * 1.0
     config.base_position_kd = np.array([10.0, 10.0, 10.0]) * 1.0
@@ -90,7 +91,7 @@ def get_rl_config():
         ("height", 0.02),
         # ("lin_vel_z", 0.02),
         ("ang_vel_xy", 2e-6),
-        ("out_of_bound_action", 0.01),
+        # ("out_of_bound_action", 0.01),
         ("legged_gym_tracking_lin_vel", 2.0 * 1e-3),
         ("legged_gym_tracking_ang_vel", 1.0 * 1e-3),
         ("legged_gym_action_rate", 0.01 * 1e-3),

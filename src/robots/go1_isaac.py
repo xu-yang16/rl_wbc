@@ -23,7 +23,7 @@ class Go1Isaac(IsaacGymRobot):
         motor_control_mode: MotorControlMode,
         motor_torque_delay_steps: int = 0,
         num_actions: int = 6,
-        num_obs: int = 10,
+        num_actor_obs: int = 10,
         domain_rand: bool = False,
         terrain_type: str = "flat",
         robot_name: str = "go1",
@@ -217,7 +217,6 @@ class Go1Isaac(IsaacGymRobot):
             viewer=viewer,
             num_envs=num_envs,
             urdf_path=self.robot_param_manager.robot.urdf_path,
-            # urdf_path="data/mini_cheetah/xml/mini_cheetah.xml",
             sim_config=sim_config,
             motors=motors,
             feet_names=[
@@ -239,7 +238,7 @@ class Go1Isaac(IsaacGymRobot):
                 "4_RL_thigh",
             ],
             num_actions=num_actions,
-            num_obs=num_obs,
+            num_actor_obs=num_actor_obs,
             domain_rand=domain_rand,
             terrain_type=terrain_type,
         )

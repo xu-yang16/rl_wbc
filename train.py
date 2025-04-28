@@ -11,7 +11,8 @@ import torch
 from src.envs.trot_env import TrotEnv
 
 from rsl_rl.runners import OnPolicyRunner
-from src.envs import env_wrappers
+
+# from src.envs import env_wrappers
 from src.utilities.git_repo_manager import GitRepoManager
 
 from loguru import logger
@@ -89,10 +90,9 @@ def main(argv):
         config=reward_config,
         show_gui=args.show_gui,
     )
-    std_env = env_wrappers.RangeNormalize(env)
 
     runner = OnPolicyRunner(
-        std_env, training_config, my_git_repo_manager.full_logdir, device=device
+        env, training_config, my_git_repo_manager.full_logdir, device=device
     )
 
     if args.load_checkpoint:
