@@ -312,6 +312,7 @@ class TrotEnv:
     # ----------------- Step -----------------
     def step(self, action: torch.Tensor):
         # suppose action \in [-1, 1], we need to rescale to action_lb and action_ub
+        # action = torch.zeros_like(action)
         min_ = self.action_space[0]
         max_ = self.action_space[1]
         self._last_action = torch.clone(action)
@@ -422,6 +423,12 @@ class TrotEnv:
                 self._robot._actor_obs = self._actor_obs_buf
 
         self._compute_all_observations()
+
+        # logger.debug(f"self._actor_obs_buf[0]={self._actor_obs_buf[0]}")
+        # import ipdb
+
+        # ipdb.set_trace()
+
         return (
             self._actor_obs_buf,
             self._actor_obs_history_buf,
@@ -640,9 +647,10 @@ class TrotEnv:
         return self._steps_count >= self._episode_length
 
     def _is_done(self):
-        is_unsafe = self._robot.base_position_world[:, 2] < self._config.get(
-            "terminate_on_height", 0.15
-        )
+        is_unsafe = torch.zeros(self._num_envs, device=self._device, dtype=torch.bool)
+        # is_unsafe = self._robot.base_position_world[:, 2] < self._config.get(
+        #     "terminate_on_height", 0.15
+        # )
         if self._config.get("terminate_on_body_contact", False):
             is_unsafe = torch.logical_or(is_unsafe, self._robot.has_body_contact)
 

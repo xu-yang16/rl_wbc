@@ -211,7 +211,7 @@ class Terrain:
         additional_trimeshes = None
 
         if terrain_type == "slope_smooth":
-            slope = difficulty * 0.4 * 0.0
+            slope = difficulty * 0.4
             if np.random.uniform() > 0.5:
                 slope *= -1  # Upward or downward slope
             self._terrain_utils.pyramid_sloped_terrain(

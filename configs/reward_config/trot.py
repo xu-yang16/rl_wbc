@@ -24,7 +24,7 @@ def get_controller_config():
     config.env_dt = 0.02
 
     # terrain
-    config.terrain = "flat"
+    config.terrain = "trimesh"
     config.foot_friction = 0.7  # 0.7
 
     # command
@@ -95,6 +95,7 @@ def get_rl_config():
         ("legged_gym_tracking_lin_vel", 2.0 * 1e-3),
         ("legged_gym_tracking_ang_vel", 1.0 * 1e-3),
         ("legged_gym_action_rate", 0.01 * 1e-3),
+        ("alive", 0.01),
         # ("acc_action_penalty", 0.01 * 1e-3),
     ]
     config.clip_negative_reward = False

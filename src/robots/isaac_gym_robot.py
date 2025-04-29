@@ -166,13 +166,13 @@ class IsaacGymRobot:
         config.generation_method = GenerationMethod.CURRICULUM
         config.max_init_level = 1
         config.terrain_proportions = dict(
-            slope_smooth=0.0,
+            slope_smooth=1.0,
             slope_rough=0.0,
-            stair=0.4,
+            stair=0.0,
             obstacles=0.0,
-            stepping_stones=0.4,
-            gap=0.1,
-            pit=0.1,
+            stepping_stones=0.0,
+            gap=0.0,
+            pit=0.0,
         )
         config.randomize_steps = False
         config.randomize_step_width = True
@@ -216,7 +216,7 @@ class IsaacGymRobot:
 
         # robot initial positions
         init_positions = terrain_origins.clone()
-        init_positions[:, 2] += 0.268 + 0.04
+        init_positions[:, 2] += 0.3
         sobol_engine = torch.quasirandom.SobolEngine(dimension=2, scramble=True)
         sobol_points = sobol_engine.draw(self._num_envs)
         sobol_points = (sobol_points - 0.5) * 2.5
@@ -775,7 +775,9 @@ class IsaacGymRobot:
     # ----------------- base properties -----------------
     @property
     def base_position_world(self):
-        return self._root_states[:, :3]
+        tmp = self._root_states[:, :3] - self.env_origins
+        tmp[:, 2] += 0.26
+        return tmp
 
     @property
     def base_orientation_rpy(self):
