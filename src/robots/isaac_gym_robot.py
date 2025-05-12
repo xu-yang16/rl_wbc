@@ -4,7 +4,7 @@ import os, sys
 import sys
 from typing import Any, List
 
-from isaacgym import gymapi, gymtorch
+from isaacgym import gymapi, gymtorch, terrain_utils
 
 import ml_collections
 import numpy as np
@@ -71,7 +71,8 @@ class IsaacGymRobot:
         viewer: Any,
         num_envs: int,
         urdf_path: str,
-        sim_config: ml_collections.ConfigDict,
+        terrain_config: ml_collections.ConfigDict(),
+        sim_config: ml_collections.ConfigDict(),
         motors: Any,
         feet_names: List[str],
         calf_names: List[str],
@@ -87,6 +88,7 @@ class IsaacGymRobot:
         self._sim = sim
         self._viewer = viewer
         self._enable_viewer_sync = True
+        self._terrain_config = terrain_config
         self._sim_config = sim_config
         self._device = self._sim_config.sim_device
         self._num_envs = num_envs
@@ -146,83 +148,86 @@ class IsaacGymRobot:
         else:
             raise ValueError("Unknown terrain type")
 
-    def get_terrain_config(self):
-        from ml_collections import ConfigDict
-        from src.utilities.terrain import GenerationMethod
-
-        config = ConfigDict()
-        # config.type = 'plane'
-        config.type = "trimesh"
-        config.terrain_length = 10
-        config.terrain_width = 10
-        config.border_size = 15
-        config.num_rows = 10
-        config.num_cols = 10
-        config.horizontal_scale = 0.05
-        config.vertical_scale = 0.005
-        config.move_up_distance = 4.5
-        config.move_down_distance = 2.5
-        config.slope_threshold = 0.75
-        config.generation_method = GenerationMethod.CURRICULUM
-        config.max_init_level = 1
-        config.terrain_proportions = dict(
-            slope_smooth=1.0,
-            slope_rough=0.0,
-            stair=0.0,
-            obstacles=0.0,
-            stepping_stones=0.0,
-            gap=0.0,
-            pit=0.0,
-        )
-        config.randomize_steps = False
-        config.randomize_step_width = True
-        # Curriculum setup
-        config.curriculum = True
-        config.restitution = 0.0
-        return config
+        self.get_env_origins()
 
     def _create_trimesh(self):
         """Adds a triangle mesh terrain to the simulation, sets parameters based on the cfg."""
-        terrain_config = self.get_terrain_config()
-        terrain = Terrain(terrain_config, device=self._device)
+        terrain = Terrain(self._terrain_config, device=self._device)
 
+        vertices, triangles = terrain_utils.convert_heightfield_to_trimesh(
+            terrain.height_samples_numpy,
+            self._terrain_config.horizontal_scale,
+            self._terrain_config.vertical_scale,
+            self._terrain_config.slope_threshold,
+        )
+
+        # create trimesh
         tm_params = gymapi.TriangleMeshParams()
-        tm_params.nb_vertices = terrain.vertices.shape[0]
-        tm_params.nb_triangles = terrain.triangles.shape[0]
+        tm_params.nb_vertices = vertices.shape[0]
+        tm_params.nb_triangles = triangles.shape[0]
 
-        tm_params.transform.p.x = -terrain_config.border_size
-        tm_params.transform.p.y = -terrain_config.border_size
+        tm_params.transform.p.x = -self._terrain_config.border_size
+        tm_params.transform.p.y = -self._terrain_config.border_size
         tm_params.transform.p.z = 0.0
 
-        tm_params.static_friction = 0.99
-        tm_params.dynamic_friction = 0.99
-        tm_params.restitution = terrain_config.restitution
+        tm_params.static_friction = 1.0
+        tm_params.dynamic_friction = 1.0
+        tm_params.restitution = 0.0
         self._gym.add_triangle_mesh(
             self._sim,
-            terrain.vertices.flatten(order="C"),
-            terrain.triangles.flatten(order="C"),
+            vertices.flatten(order="C"),
+            triangles.flatten(order="C"),
             tm_params,
         )
-
-        terrain_levels = torch.randint(
-            0, terrain_config.num_rows, (self.num_envs,), device=self.device
+        self.height_samples = (
+            torch.tensor(terrain.height_samples_numpy)
+            .view(terrain.total_rows, terrain.total_cols)
+            .to(self._device)
         )
-        terrain_types = torch.div(
-            torch.arange(self._num_envs, device=self.device),
-            (self._num_envs / terrain_config.num_cols),
-            rounding_mode="floor",
-        ).to(torch.long)
-        terrain_origins = terrain.env_origins[terrain_levels, terrain_types]
+        self.terrain = terrain
+
+    def get_env_origins(self):
+        # get env origins
+        if self._terrain_config.terrain == "flat":
+            self.env_origins = torch.zeros(
+                self._num_envs, 3, device=self._device, required_grad=False
+            )
+            num_cols = int(np.sqrt(self._num_envs))
+            indices = torch.arange(self._num_envs)
+            distance = 3.0
+            self.env_origins[:, 0] = (indices // num_cols) * distance
+            self.env_origins[:, 1] = (indices % num_cols) * distance
+            self.env_origins[:, 2] = 0.0
+        else:
+            max_init_level = 1
+            terrain_levels = torch.randint(
+                0, max_init_level + 1, (self.num_envs,), device=self.device
+            )
+            terrain_types = torch.div(
+                torch.arange(self._num_envs, device=self.device),
+                (self._num_envs / self._terrain_config.num_cols),
+                rounding_mode="floor",
+            ).to(torch.long)
+            terrain_origins = (
+                torch.from_numpy(self.terrain.env_origins_numpy)
+                .to(torch.float)
+                .to(self._device)
+            )
+            self.env_origins = terrain_origins[terrain_levels, terrain_types]
 
         # robot initial positions
-        init_positions = terrain_origins.clone()
-        init_positions[:, 2] += 0.3
-        sobol_engine = torch.quasirandom.SobolEngine(dimension=2, scramble=True)
-        sobol_points = sobol_engine.draw(self._num_envs)
-        sobol_points = (sobol_points - 0.5) * 2.5
-        init_positions[:, :2] += to_torch(sobol_points, device=self._device)
+        # init_positions = terrain_origins.clone()
+        # init_positions[:, 2] += 0.3
+        # sobol_engine = torch.quasirandom.SobolEngine(dimension=2, scramble=True)
+        # sobol_points = sobol_engine.draw(self._num_envs)
+        # sobol_points = (sobol_points - 0.5) * 2.5
+        # init_positions[:, :2] += to_torch(sobol_points, device=self._device)
 
-        self.env_origins = init_positions
+        # self.env_origins = init_positions
+        self.env_origins[:, 2] += 0.28
+        self.env_origins[:, :2] += torch_rand_float(
+            -1, 1, (self._num_envs, 2), device=self._device
+        )
 
     def _create_plane(self):
         plane_params = gymapi.PlaneParams()
@@ -232,21 +237,27 @@ class IsaacGymRobot:
         plane_params.restitution = 0.0
         self._gym.add_ground(self._sim, plane_params)
 
-        num_cols = int(np.sqrt(self._num_envs))
+    def _get_heights(self):
+        if self._terrain_config.terrain == "flat":
+            return torch.zeros(self._num_envs, device=self._device)
+        # trimesh
+        points_xy = self._root_states[:, :2] + self._terrain_config.border_size
+        p_xy = (points_xy / self._terrain_config.horizontal_scale).long()
+        px = torch.clip(p_xy[:, 0], 0, self.height_samples.shape[0] - 2)
+        py = torch.clip(p_xy[:, 1], 0, self.height_samples.shape[1] - 2)
 
-        distance = 2.0
-        indices = torch.arange(self._num_envs)
-        self.env_origins[:, 0] = (indices // num_cols) * distance
-        self.env_origins[:, 1] = (indices % num_cols) * distance
-        self.env_origins[:, 2] = 0.268
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px + 1, py]
+        heights3 = self.height_samples[px, py + 1]
+        heights = torch.min(heights1, heights2)
+        heights = torch.min(heights, heights3)
+
+        return heights.view(self.num_envs, -1) * self._terrain_config.vertical_scale
 
     def _compute_base_init_state(self, env_origins: torch.Tensor):
         """Computes desired init state for CoM (position and velocity)."""
-        init_state_list = (
-            [0.0, 0.0, 0.0] + [0.0, 0.0, 0.0, 1.0] + [0.0, 0.0, 0.0] + [0.0, 0.0, 0.0]
-        )
-        init_states = np.stack([init_state_list] * self.num_envs, axis=0)
-        init_states = to_torch(init_states, device=self._device)
+        init_states = torch.zeros(self._num_envs, 13, device=self._device)
+        init_states[:, 6] = 1.0
         init_states[:, :3] = env_origins
         return to_torch(init_states, device=self._device)
 
@@ -602,6 +613,9 @@ class IsaacGymRobot:
         self._gym.refresh_dof_force_tensor(self._sim)
         self._gym.refresh_jacobian_tensors(self._sim)
 
+        # compute heights
+        self.measured_heights = self._get_heights()
+
         # update robot state
         self._base_quat[:] = self._root_states[:, 3:7]
         self._base_rot_mat = quat_to_rot_mat(self._base_quat)
@@ -775,9 +789,7 @@ class IsaacGymRobot:
     # ----------------- base properties -----------------
     @property
     def base_position_world(self):
-        tmp = self._root_states[:, :3] - self.env_origins
-        tmp[:, 2] += 0.26
-        return tmp
+        return self._root_states[:, :3] - self.measured_heights
 
     @property
     def base_orientation_rpy(self):

@@ -17,6 +17,29 @@ def get_gait_config():
     return gait_config
 
 
+def get_terrain_config():
+    config = ConfigDict()
+    config.terrain = "trimesh"
+    config.border_size = 25
+    config.terrain_length = 8
+    config.terrain_width = 8
+    config.num_rows = 10
+    config.num_cols = 10
+    config.horizontal_scale = 0.1
+    config.vertical_scale = 0.005
+    config.slope_threshold = 0.75
+    # slope_smooth, slope_rough, stairs_up, stairs_down, discrete
+    config.terrain_proportions = [0.3, 0.3, 0.0, 0.0, 0.4]
+    config.max_init_level = 1
+    config.randomize_steps = False
+    config.randomize_step_width = True
+    # Curriculum setup
+    config.curriculum = True
+    config.restitution = 0.0
+
+    return config
+
+
 def get_controller_config():
     config = ConfigDict()
 
@@ -32,9 +55,9 @@ def get_controller_config():
     config.resampling_time = 10.0
     config.use_command_curriculum = False
     config.goal_lb = torch.tensor(
-        [-1.0, -1.0, -1.0], dtype=torch.float
+        [0.0, 0.0, -0.0], dtype=torch.float
     )  # Lin_x, Lin_y, Rot_z
-    config.goal_ub = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float)
+    config.goal_ub = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float)
 
     # action
     config.action_lb = np.array(
@@ -95,7 +118,7 @@ def get_rl_config():
         ("legged_gym_tracking_lin_vel", 2.0 * 1e-3),
         ("legged_gym_tracking_ang_vel", 1.0 * 1e-3),
         ("legged_gym_action_rate", 0.01 * 1e-3),
-        ("alive", 0.01),
+        # ("alive", 0.01),
         # ("acc_action_penalty", 0.01 * 1e-3),
     ]
     config.clip_negative_reward = False
@@ -114,5 +137,7 @@ def get_config():
 
     config.update(get_controller_config())
     config.update(get_rl_config())
+
+    config.update(get_terrain_config())
 
     return config

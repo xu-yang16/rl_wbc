@@ -97,7 +97,6 @@ def main(argv):
     import torch
     from rsl_rl.runners import OnPolicyRunner
     import yaml
-    from src.envs import env_wrappers
 
     torch.set_printoptions(precision=2, sci_mode=False)
 
@@ -128,7 +127,6 @@ def main(argv):
         use_real_robot=FLAGS.use_real_robot,
         robot_name=FLAGS.name,
     )
-    env = env_wrappers.RangeNormalize(env)
     if FLAGS.use_real_robot:
         env.robot.state_estimator.use_external_contact_estimator = (
             not FLAGS.use_contact_sensor
@@ -144,7 +142,10 @@ def main(argv):
     export_policy_as_jit(runner.alg.actor_critic, os.path.dirname(policy_path))
 
     # Reset environment
-    state, _ = env.reset()
+    env.reset()
+
+    actor_obs, actor_obs_history, critic_obs = env.get_all_observations()
+
     total_reward = torch.zeros(FLAGS.num_envs, device=device)
     steps_count = 0
 
@@ -154,18 +155,18 @@ def main(argv):
         # try:
         while True:
             steps_count += 1
-            action = policy(state)
+            action = policy(actor_obs, actor_obs_history)
 
             command = _generate_example_linear_angular_speed(
                 env.robot.time_since_reset_scalar
             )
-            env._env._robot.set_desired_velocity(command)
-            env._env._desired_cmd[:, 0] = command[0]
-            env._env._desired_cmd[:, 1] = command[1]
-            env._env._desired_cmd[:, 2] = command[2]
+            # env._robot.set_desired_velocity(command)
+            env._desired_cmd[:, 0] = command[0]
+            env._desired_cmd[:, 1] = command[1]
+            env._desired_cmd[:, 2] = command[2]
             # logger.debug(f"cmd: {lin_command}, {ang_command}")
 
-            state, _, reward, done, info = env.step(action)
+            actor_obs, actor_obs_history, critic_obs, *_ = env.step(action)
 
             # current_sim_time = env.robot.time_since_reset_scalar
             # if steps_count % 100 == 1:

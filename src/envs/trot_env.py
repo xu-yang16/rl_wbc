@@ -77,6 +77,7 @@ class TrotEnv:
                 num_envs=self._num_envs,
                 sim=self._sim,
                 viewer=self._viewer,
+                terrain_config=self._config,
                 sim_config=self._sim_conf,
                 motor_control_mode=MotorControlMode.HYBRID,
                 motor_torque_delay_steps=self._config.get("motor_torque_delay_steps"),

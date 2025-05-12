@@ -18,7 +18,8 @@ class Go1Isaac(IsaacGymRobot):
         self,
         sim: Any,
         viewer: Any,
-        sim_config: ml_collections.ConfigDict(),
+        terrain_config: ml_collections.ConfigDict(),  # type: ignore
+        sim_config: ml_collections.ConfigDict(),  # type: ignore
         num_envs: int,
         motor_control_mode: MotorControlMode,
         motor_torque_delay_steps: int = 0,
@@ -217,6 +218,7 @@ class Go1Isaac(IsaacGymRobot):
             viewer=viewer,
             num_envs=num_envs,
             urdf_path=self.robot_param_manager.robot.urdf_path,
+            terrain_config=terrain_config,
             sim_config=sim_config,
             motors=motors,
             feet_names=[
@@ -243,7 +245,7 @@ class Go1Isaac(IsaacGymRobot):
             terrain_type=terrain_type,
         )
         if self.robot_name == "go2":
-            self.env_origins[:, 2] = 0.30
+            self.env_origins[:, 2] += 0.04
 
     @property
     def hip_positions_in_body_frame(self):

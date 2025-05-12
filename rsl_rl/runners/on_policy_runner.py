@@ -357,11 +357,13 @@ class OnPolicyRunner:
         self.eval_mode()
         if device is not None:
             self.alg.actor_critic.to(device)
-        policy = self.alg.policy.act_inference
+        policy = self.alg.actor_critic.act_inference
         if device is not None:
             self.actor_obs_normalizer.to(device)
-        policy = lambda x: self.alg.policy.act_inference(
-            self.actor_obs_normalizer(x)
+        policy = lambda x, y: self.alg.actor_critic.act_inference(
+            torch.cat(
+                (self.actor_obs_normalizer(x), self.alg.encoder.encode(y)), dim=-1
+            )
         )  # noqa: E731
         return policy
 
